@@ -1,0 +1,168 @@
+---
+title: "Lab4 Solutions"
+author: "Rushal Sohal; github: rushalsohal"
+date: "03/11/20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+if (!require("readxl")) {
+install.packages("readxl")
+}
+if (!require("tidyr")) {
+install.packages("tidyr")
+}
+if (!require("dplyr")) {
+install.packages("dplyr")
+}
+if (!require("ggplot2")) {
+install.packages("ggplot2")
+}
+
+library(readxl)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+```
+
+# Part 1  
+
+```{r}
+defense <- read_excel('cyclonesFootball2019.xlsx', sheet='Defensive')
+offense <- read_excel('cyclonesFootball2019.xlsx', sheet='Offensive')
+bio <- read_excel('cyclonesFootball2019.xlsx', sheet='Biography')
+str(bio)
+defClean <- defense %>%
+  mutate(Name = as.factor(Name),Opponent_Opponent=as.factor(Opponent_Opponent)) %>%
+  mutate_at(c("Tackles_Solo","Tackles_ASST","Tackles_TFL","Tackles_Sack","Turnover_FF","Turnover_FR","Turnover_INT","Pass_QBH","Pass_PB"),as.numeric)
+
+offClean <- offense %>%
+  mutate(Name = as.factor(Name),Opponent_Opponent=as.factor(Opponent_Opponent)) %>%
+  replace_na(list(.=0)) %>%
+  mutate_at(c("Rushing_ATT","Rushing_YDS","Rushing_TD","Receiving_REC","Receiving_YDS","Receiving_TD","Passing_CMP-ATT","Passing_YDS","Passing_TD","Passing_INT"),as.numeric)
+
+bioClean <- bio %>% 
+  separate(col=Height,into=c("Feet","Inches"),sep="-") %>%
+  mutate(Name=as.factor(Name),Hometown=as.factor(Hometown),Feet=as.numeric(Feet),Inches=as.numeric(Inches),Weight=as.numeric(Weight)) %>%
+  mutate(Height_Inch = Feet*12+Inches) %>%
+  select(-Feet,-Inches)
+
+str(defClean)
+str(offClean)
+str(bioClean)
+
+```
+  
+# Part 2.1
+
+```{r}
+#1.
+defClean2 = pivot_longer(
+  defClean,
+  cols = Tackles_Solo:Pass_PB,
+  names_to = "Statistic",
+  values_to = "Count",
+  values_drop_na = TRUE
+)
+head(defClean2)
+```
+
+```{r}
+#2.
+ggplot(data=defClean2, aes(defClean2$Count)) + 
+  geom_histogram(binwidth = 1) +
+  facet_wrap(~ defClean2$Statistic) + labs(title="Skill Plots",y="Frequency",x="Number of Occurrences")
+```
+
+All the items with high frequency in 0 are rare skill. For instance, Turnover_FF, Turnover_FR, Turnoner_INT, Pass_QBH are rare skills. 
+
+```{r}
+defClean_3 <- defClean2 %>%
+  filter(Statistic == "Tackles_Solo",Opponent_Opponent == "West Virginia" | Opponent_Opponent == "Kansas State") %>% 
+  select(-Statistic) %>%
+  pivot_wider(names_from = Opponent_Opponent, values_from = Count)
+
+ggplot(defClean_3, aes(x=defClean_3$`West Virginia`, y=defClean_3$`Kansas State`)) +
+  geom_point(size=2, shape=23) + labs(title="Solo Tackles in WVU and KSU Games",x="West Virgina Solo Tackles",y="Kansas State Solo Tackles")
+```
+
+We can see that many players had better games against one team or the other. There are three distinct players with at least two more tackles in the WVU game over KSU whereas ISU's two leading tacklers in the KSU game had one combined mark in the WVU game. Overall, the plot doesn't clearly distinguish, however, we can say ISU's defense was better against West Virginia.
+
+# Part 2.2  
+  
+```{r}
+
+bioClean2 = bioClean %>% separate(Hometown, c("City", "State"), sep = ",")
+head(bioClean2)
+w = table(bioClean2$State)
+t = as.data.frame(w)
+t
+```
+
+We can see all the state entries in the second dataframe. Iowa has the most with 35 followed by Florida with 10 entries.
+
+# Part 3
+```{r}
+#1
+bo_join <- offClean %>% left_join(bioClean,by="Name")
+home <-  bo_join %>%
+  select(Name,Hometown) %>% unique
+home
+```
+
+```{r}
+#2
+prob2 <- bo_join %>%
+  group_by(Name) %>%
+  summarize(rec_yds=sum(Receiving_YDS))
+head(prob2)
+prob2_join <- prob2 %>%
+  left_join(bo_join,by="Name") %>%
+  select(Name,rec_yds,Weight)
+plot(Weight~rec_yds,data=prob2_join,main="Scatterplot of Weight and Receiving Yards",xlab="Rec. Yards")
+```
+    
+We can see that there is little to no correlation between the two. Most of the points are clustered near the left corner of the graph. Moreover, one of the lightest player has the most receiving yards.
+        
+```{r}
+#3
+isu_stats <- offClean %>%
+  group_by(Opponent_Opponent) %>%
+  summarize(rush_att = sum(as.numeric(Rushing_ATT),na.rm=T),rush_yds = sum(Rushing_YDS,na.rm=T),rush_td = sum(Rushing_TD,na.rm=T))
+
+head(isu_stats)
+isu2 <- offClean %>%
+  group_by(Opponent_Opponent)
+isu_stats
+purdy <- offClean %>%
+  filter(Name=="Purdy, Brock") %>%
+  select(Opponent_Opponent,Passing_YDS)
+combined <- isu_stats %>%
+  left_join(purdy,by="Opponent_Opponent")
+head(combined)
+par(mfrow=c(1,3))
+plot(data=combined,rush_att~Passing_YDS,main="How Purdy's Passing yards affects Rush Attempts",ylab="Rushing Attempts",xlab="Purdy's Passing Yards")
+plot(data=combined,rush_yds~Passing_YDS,main="How Purdy's Passing yards affects Rush Yards",ylab="Rushing Yards",xlab="Purdy's Passing Yards")
+plot(data=combined,rush_td~Passing_YDS,main="How Purdy's Passing yards affects Rush Touchdowns",ylab="Rushing Touchdowns",xlab="Purdy's Passing Yards")
+
+```
+
+Brock Purdy is far and away the best passer on the team. Other players with non-zero passing yards never top 100 yards, while Brock tops 100 for every game.
+
+Q> Which player averaged the most rushing yards per game and who scored the most rushing touchdowns?
+
+```{r}
+#4
+offRushing = full_join(bioClean, offClean, by='Name') %>% group_by(Name) %>% select(Name, Rushing_YDS, Rushing_TD, Rushing_ATT)
+offRushing = na.omit(offRushing)
+
+ggplot(offRushing, aes(y=Rushing_YDS)) + geom_boxplot() + facet_wrap(~Name)
+ggplot(offRushing, aes(y=Rushing_TD)) + geom_boxplot() + facet_wrap(~Name)
+```
+
+Brock Purdy and Breece Hall average consistent values with higher rushing yards. Hall and Purdy have nearly identical frequency in their touchdown rates. They are also the only players to score 3 touchdowns in a game.
